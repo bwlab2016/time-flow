@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>并行任务时间轴</title>
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --text-blue: #58a6ff;
+            --block-blue: #1f6feb;
+            --block-green: #238636;
+            --block-purple: #8957e5;
+            --border-dark: #30363d;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-blue);
+        }
+
+        .date-picker {
+            color: var(--text-blue);
+            background: transparent;
+            border: 1px solid var(--border-dark);
+            padding: 5px 10px;
+            border-radius: 6px;
+        }
+
+        .add-task {
+            background: var(--block-blue);
+            color: #fff;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        /* 时间轴网格 */
+        .timeline-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: var(--bg-dark);
+        }
+
+        .time-header {
+            display: grid;
+            grid-template-columns: 200px repeat(24, 1fr);
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-dark);
+            color: #8b949e;
+            font-size: 12px;
+        }
+
+        .time-header > div:first-child {
+            /* 留空第一列，与任务名对齐 */
+        }
+
+        /* 任务行 */
+        .task-row {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-dark);
+        }
+
+        .task-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-left: 10px;
+        }
+
+        .delete-task {
+            margin-left: auto;
+            background: transparent;
+            border: none;
+            color: #484f58;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .delete-task:hover {
+            background: #da3633;
+            color: #fff;
+        }
+
+        .task-timeline {
+            position: relative;
+            height: 40px;
+            background-color: #161b22;
+            border-radius: 3px;
+            cursor: crosshair;
+        }
+
+        /* 时间块样式 */
+        .timeline-block {
+            position: absolute;
+            height: 30px;
+            top: 5px;
+            background: var(--block-blue);
+            border-radius: 3px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .timeline-block:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            margin-bottom: 5px;
+        }
+
+        /* 添加网格线 */
+        .task-timeline {
+            background-image: linear-gradient(90deg, 
+                var(--border-dark) 1px, 
+                transparent 1px
+            );
+            background-size: calc(100% / 24) 100%;
+        }
+
+        /* 修改输入框样式 */
+        .task-input {
+            background: transparent;
+            border: 1px solid var(--border-dark);
+            color: #c9d1d9;
+            padding: 5px 10px;
+            border-radius: 6px;
+            width: 200px;
+        }
+
+        /* 添加临时时间块样式 */
+        .temp-block {
+            background: rgba(31, 111, 235, 0.5);
+            border: 1px dashed rgba(31, 111, 235, 0.8);
+        }
+
+        /* 添加完成状态的样式 */
+        .completed-task .task-timeline {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .completed-text {
+            text-decoration: line-through;
+            color: #8b949e;
+        }
+
+        /* 在 style 标签中添加时间块删除按钮的样式 */
+        .delete-block {
+            display: none;
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 12px;
+            border-radius: 3px;
+        }
+
+        .timeline-block:hover .delete-block {
+            display: block;
+        }
+
+        .delete-block:hover {
+            background: rgba(218, 54, 51, 0.7);
+        }
+
+        .stats-panel {
+            display: flex;
+            gap: 20px;
+            padding: 15px;
+            background: #161b22;
+            border: 1px solid var(--border-dark);
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-right: 1px solid var(--border-dark);
+        }
+
+        .stat-item:last-child {
+            border-right: none;
+        }
+
+        .stat-label {
+            color: #8b949e;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            color: var(--text-blue);
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">
+            <h1>并行任务时间轴</h1>
+            <input type="date" class="date-picker" id="dateSelector">
+        </div>
+        <div class="actions">
+            <input type="text" id="newTaskInput" placeholder="添加新任务" class="task-input">
+            <button class="add-task" onclick="addNewTask()">+ 添加任务</button>
+        </div>
+    </div>
+
+    <div class="stats-panel">
+        <div class="stat-item">
+            <div class="stat-label">总任务</div>
+            <div class="stat-value" id="totalTasks">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">已完成</div>
+            <div class="stat-value" id="completedTasks">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">完成率</div>
+            <div class="stat-value" id="completionRate">0%</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">总工作时长</div>
+            <div class="stat-value" id="totalWorkTime">0小时</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">平均时长/任务</div>
+            <div class="stat-value" id="avgWorkTime">0小时</div>
+        </div>
+    </div>
+
+    <div class="timeline-grid">
+        <div></div>
+        <div class="time-header">
+            <div>0:00</div><div>1:00</div><div>2:00</div><div>3:00</div>
+            <div>4:00</div><div>5:00</div><div>6:00</div><div>7:00</div>
+            <div>8:00</div><div>9:00</div><div>10:00</div><div>11:00</div>
+            <div>12:00</div><div>13:00</div><div>14:00</div><div>15:00</div>
+            <div>16:00</div><div>17:00</div><div>18:00</div><div>19:00</div>
+            <div>20:00</div><div>21:00</div><div>22:00</div><div>23:00</div>
+        </div>
+
+        <div id="taskList">
+            <!-- 任务行模板 -->
+            <div class="task-row">
+                <div class="task-info">
+                    <input type="checkbox" class="task-checkbox">
+                    <span>Redis部署</span>
+                    <button class="delete-task">×</button>
+                </div>
+                <div class="task-timeline">
+                    <!-- 时间块由 JavaScript 动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化日期选择器
+        const dateSelector = document.getElementById('dateSelector');
+        dateSelector.valueAsDate = new Date();
+
+        // 添加日期选择事件监听
+        dateSelector.addEventListener('change', function() {
+            loadTasks(); // 当日期改变时重新加载任务
+        });
+
+        // 格式化日期函数
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // 加载任务列表
+        function loadTasks() {
+            const selectedDate = formatDate(dateSelector.valueAsDate);
+            fetch(`/api/tasks?date=${selectedDate}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('获取任务列表失败');
+                    }
+                    return response.json();
+                })
+                .then(tasks => {
+                    const taskList = document.getElementById('taskList');
+                    taskList.innerHTML = '';
+                    
+                    // 显示所有任务，不再过滤完成状态
+                    tasks.forEach(task => {
+                        const taskRow = createTaskRow(task);
+                        taskList.appendChild(taskRow);
+                        loadTimeBlocks(task.id);
+                    });
+                    updateStats();
+                })
+                .catch(error => {
+                    console.error('加载任务失败:', error);
+                    const taskList = document.getElementById('taskList');
+                    taskList.innerHTML = '<div class="task-row">暂无任务数据</div>';
+                });
+        }
+
+        let isDrawing = false;
+        let startX = 0;
+        let currentTaskId = null;
+
+        // 开始创建时间块
+        function startTimeBlock(event, taskId) {
+            isDrawing = true;
+            currentTaskId = taskId;
+            const timeline = document.getElementById(`timeline-${taskId}`);
+            const rect = timeline.getBoundingClientRect();
+            startX = (event.clientX - rect.left) / rect.width;
+
+            // 创建临时时间块
+            const tempBlock = document.createElement('div');
+            tempBlock.className = 'timeline-block temp-block';
+            tempBlock.style.left = (startX * 100) + '%';
+            timeline.appendChild(tempBlock);
+
+            document.addEventListener('mousemove', moveTimeBlock);
+            document.addEventListener('mouseup', endTimeBlock);
+        }
+
+        // 移动时间块
+        function moveTimeBlock(event) {
+            if (!isDrawing) return;
+            const timeline = document.getElementById(`timeline-${currentTaskId}`);
+            const rect = timeline.getBoundingClientRect();
+            const currentX = (event.clientX - rect.left) / rect.width;
+            
+            const left = Math.min(startX, currentX);
+            const width = Math.abs(currentX - startX);
+            
+            const tempBlock = timeline.querySelector('.temp-block');
+            tempBlock.style.left = (left * 100) + '%';
+            tempBlock.style.width = (width * 100) + '%';
+        }
+
+        // 结束创建时间块
+        function endTimeBlock(event) {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            const timeline = document.getElementById(`timeline-${currentTaskId}`);
+            const rect = timeline.getBoundingClientRect();
+            const endX = (event.clientX - rect.left) / rect.width;
+
+            const left = Math.min(startX, endX);
+            const right = Math.max(startX, endX);
+
+            const date = dateSelector.valueAsDate;
+            const startHours = left * 24;
+            const endHours = right * 24;
+
+            const startTime = new Date(date);
+            startTime.setHours(Math.floor(startHours), (startHours % 1) * 60);
+            const endTime = new Date(date);
+            endTime.setHours(Math.floor(endHours), (endHours % 1) * 60);
+
+            // 创建新的时间块
+            fetch('/api/timeblocks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    task_id: currentTaskId,
+                    start_time: startTime.toISOString(),
+                    end_time: endTime.toISOString()
+                })
+            }).then(response => {
+                if (response.ok) {
+                    loadTimeBlocks(currentTaskId);
+                }
+            }).finally(() => {
+                const tempBlock = timeline.querySelector('.temp-block');
+                if (tempBlock) tempBlock.remove();
+            });
+
+            document.removeEventListener('mousemove', moveTimeBlock);
+            document.removeEventListener('mouseup', endTimeBlock);
+        }
+
+        // 修改任务行函数，确保复选框可以切换
+        function createTaskRow(task) {
+            const row = document.createElement('div');
+            row.className = 'task-row' + (task.completed ? ' completed-task' : '');
+            row.innerHTML = `
+                <div class="task-info">
+                    <input type="checkbox" class="task-checkbox" 
+                           ${task.completed ? 'checked' : ''} 
+                           onchange="toggleTaskComplete(${task.id}, this.checked)">
+                    <span class="${task.completed ? 'completed-text' : ''}">${task.title}</span>
+                    <button class="delete-task" onclick="deleteTask(${task.id})">×</button>
+                </div>
+                <div class="task-timeline" id="timeline-${task.id}" 
+                     onmousedown="${task.completed ? '' : `startTimeBlock(event, ${task.id})`}">
+                </div>
+            `;
+            return row;
+        }
+
+        // 修改加载时间块函数，添加错误处理
+        function loadTimeBlocks(taskId) {
+            const selectedDate = formatDate(dateSelector.valueAsDate);
+            fetch(`/api/timeblocks?task_id=${taskId}&date=${selectedDate}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('获取时间块失败');
+                    }
+                    return response.json();
+                })
+                .then(blocks => {
+                    const timeline = document.getElementById(`timeline-${taskId}`);
+                    if (!timeline) {
+                        console.error(`找不到任务 ${taskId} 的时间轴元素`);
+                        return;
+                    }
+                    timeline.innerHTML = '';
+                    
+                    if (!Array.isArray(blocks)) {
+                        console.error('时间块数据格式错误:', blocks);
+                        return;
+                    }
+                    
+                    blocks.forEach(block => {
+                        try {
+                            const startTime = new Date(block.start_time);
+                            const endTime = new Date(block.end_time);
+                            
+                            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                                console.error('无效的时间格式:', block);
+                                return;
+                            }
+                            
+                            const left = (startTime.getHours() + startTime.getMinutes() / 60) / 24 * 100;
+                            const width = ((endTime - startTime) / (1000 * 60 * 60)) / 24 * 100;
+                            
+                            const blockDiv = document.createElement('div');
+                            blockDiv.className = 'timeline-block';
+                            blockDiv.style.left = left + '%';
+                            blockDiv.style.width = width + '%';
+
+                            // 添加删除按钮
+                            const deleteButton = document.createElement('button');
+                            deleteButton.className = 'delete-block';
+                            deleteButton.innerHTML = '×';
+                            deleteButton.onclick = (e) => {
+                                e.stopPropagation(); // 阻止事件冒泡
+                                deleteTimeBlock(block.id, taskId);
+                            };
+                            
+                            blockDiv.appendChild(deleteButton);
+
+                            // 格式化时间显示
+                            const formatTime = (date) => {
+                                return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                            };
+
+                            // 计算时长（分钟）
+                            const duration = Math.round((endTime - startTime) / (1000 * 60));
+                            // 设置悬停提示
+                            blockDiv.title = `${formatTime(startTime)}-${formatTime(endTime)} (${duration}分钟)`;
+
+                            timeline.appendChild(blockDiv);
+                        } catch (error) {
+                            console.error('处理时间块时出错:', error, block);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error(`加载任务 ${taskId} 的时间块失败:`, error);
+                    const timeline = document.getElementById(`timeline-${taskId}`);
+                    if (timeline) {
+                        timeline.innerHTML = ''; // 清空时间轴
+                    }
+                });
+        }
+
+        // 初始加载
+        loadTasks();
+
+        // 在 script 标签末尾添加删除任务的函数
+        function deleteTask(taskId) {
+            if (confirm('确定要删除这个任务吗？')) {
+                fetch(`/api/tasks/${taskId}`, {
+                    method: 'DELETE'
+                }).then(response => {
+                    if (response.ok) {
+                        loadTasks(); // 重新加载任务列表
+                    } else {
+                        alert('删除任务失败');
+                    }
+                });
+            }
+        }
+
+        // 在 script 标签末尾添加新增任务的函数
+        function addNewTask() {
+            const input = document.getElementById('newTaskInput');
+            const taskTitle = input.value.trim();
+            
+            if (!taskTitle) {
+                alert('请输入任务名称');
+                return;
+            }
+
+            fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: taskTitle,
+                    date: dateSelector.value
+                })
+            }).then(response => {
+                if (response.ok) {
+                    input.value = ''; // 清空输入框
+                    loadTasks(); // 重新加载任务列表
+                } else {
+                    alert('创建任务失败');
+                }
+            });
+        }
+
+        // 添加回车键提交功能
+        document.getElementById('newTaskInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addNewTask();
+            }
+        });
+
+        // 修改任务完成状态切换函数，确保可以取消完成
+        function toggleTaskComplete(taskId, completed) {
+            fetch(`/api/tasks/${taskId}/complete`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    completed: completed,
+                    completed_at: completed ? new Date().toISOString() : null
+                })
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error('更新任务状态失败');
+                }
+                return response.json();
+            }).then(() => {
+                loadTasks(); // 重新加载任务列表
+            }).catch(error => {
+                console.error('更新任务状态失败:', error);
+                // 如果更新失败，恢复复选框状态
+                const checkbox = document.querySelector(`#timeline-${taskId}`).parentElement.querySelector('.task-checkbox');
+                if (checkbox) {
+                    checkbox.checked = !completed;
+                }
+                alert('更新任务状态失败');
+            });
+        }
+
+        // 修改删除时间块的函数
+        function deleteTimeBlock(blockId, taskId) {
+            if (confirm('确定要删除这个时间块吗？')) {
+                fetch(`/api/timeblocks/${blockId}`, {
+                    method: 'DELETE'
+                }).then(response => {
+                    if (response.ok) {
+                        loadTimeBlocks(taskId);
+                    } else {
+                        alert('删除时间块失败');
+                    }
+                });
+            }
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            const selectedDate = formatDate(dateSelector.valueAsDate);
+            fetch(`/api/stats?date=${selectedDate}`)
+                .then(response => response.json())
+                .then(stats => {
+                    document.getElementById('totalTasks').textContent = stats.total_tasks;
+                    document.getElementById('completedTasks').textContent = stats.completed_tasks;
+                    document.getElementById('completionRate').textContent = `${stats.completion_rate}%`;
+                    document.getElementById('totalWorkTime').textContent = `${stats.total_work_hours}小时`;
+                    document.getElementById('avgWorkTime').textContent = `${stats.avg_work_hours}小时`;
+                });
+        }
+    </script>
+</body>
+</html>
